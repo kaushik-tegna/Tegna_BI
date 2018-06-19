@@ -2,34 +2,25 @@
 Created on Wed Jun 13 10:55:06 2018
 @author: SRanganath
 ,,,"""
-
+from Connections import WIDE_ORBIT_CONNECT, WIDE_ORBIT_QUERY
 import pandas as pd
-import pyodbc
 import datetime
 import re
-import matplotlib.pyplot as plt
+
+"""import matplotlib.pyplot as plt"""
 
 '''Connection String and Query to fetch  data'''
-import Connections.py
-
-conn = pyodbc.connect("""Driver={SQL Server Native Client 11.0};
-                      Server=172.21.128.193; "
-                      "Database=Wide_Orbit; UID=etl_user_prod;
-                      pwd=T@gna2018;""")
-query = '''SELECT * FROM [Wide_Orbit].[dbo].[buyer_demand_fcst_input_new2]
-         where [Market] = \'Atlanta\''''
-
-df = pd.read_sql(query, conn)
+df = pd.read_sql(WIDE_ORBIT_QUERY, WIDE_ORBIT_CONNECT)
 
 df = df.sort_values(by=['air_year', 'air_week', 'program_start_time'])
 
 '''date_correction'''
 
-df['prg_strt_time'] = [datetime.datetime.time(d) for
-    d in df['program_start_time']]
+df['prg_strt_time'] = [datetime.datetime.time(d) for d
+                       in df['program_start_time']]
 
-df['prg_end_time'] = [datetime.datetime.time(d) for
-    d in df['program_end_time']]
+df['prg_end_time'] = [datetime.datetime.time(d) for d
+                      in df['program_end_time']]
 
 '''rearranging the cleaned columns'''
 df = df[['market', 'Station_Name', 'daypart_name', 'invcode_name',
@@ -44,15 +35,26 @@ df = df[['market', 'Station_Name', 'daypart_name', 'invcode_name',
 
 sp_df = df[(df.daypart_name == 'SP')]
 
-p = re.compile('.*(olympic).*', re.IGNORECASE)
-olympics_df = df[(df.daypart_name == 'SP') & df.invcode_name.str.match(p)]
 
-null_df = df[df.program_start_time != df.program_start_time]
+'''Olympics only data'''
+olympic_pattern = re.compile('.*(olympic).*', re.IGNORECASE)
+olympics_df = df[(df.daypart_name == 'SP') &
+                 df.invcode_name.str.match(olympic_pattern)]
 
-olympics_df = df[(df.daypart_name == 'SP') & df.invcode_name.str.match(p)]
+#null_df = df[df.program_start_time != df.program_start_time]
+#
+#u_inv = list((sp_df.invcode_name.unique()))
+'''Creating a dataframe with only sports data'''
+sports_df = sp_df[(~sp_df.invcode_name.str.match(olympic_pattern))]
 
-u_inv = list((sp_df.invcode_name.unique()))
+'''Identifying shows with missing years'''
 
-sports_df = df[(df.daypart_name == 'SP') & (df.invcode_name != (p))]
-sports_df2 = sports_df[(~sports_df.invcode_name.str.match(p))]
+view = sp_df
+inv = list(df.invcode_name.unique())
 
+'''Creating a dictionary with years data'''
+years_dict = {}
+for invcode_name in inv:
+    temp = df[(df.invcode_name == invcode_name)]
+    years_dict[invcode_name] = temp.air_year.unique()
+    del temp

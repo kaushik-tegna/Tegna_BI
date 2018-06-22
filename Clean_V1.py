@@ -6,14 +6,17 @@ from Connections import WIDE_ORBIT_CONNECT, WIDE_ORBIT_QUERY
 import pandas as pd
 import datetime
 import re
-
-"""import matplotlib.pyplot as plt"""
+#import time
 
 '''Connection String and Query to fetch  data'''
+
+#start = time.time()
 df = pd.read_sql(WIDE_ORBIT_QUERY, WIDE_ORBIT_CONNECT)
 
 df = df.sort_values(by=['air_year', 'air_week', 'program_start_time'])
-
+#end = time.time()
+#print(end - start)
+#Time = 12.961160659790039(For Atlanta)
 '''date_correction'''
 
 df['prg_strt_time'] = [datetime.datetime.time(d) for d
@@ -41,9 +44,9 @@ olympic_pattern = re.compile('.*(olympic).*', re.IGNORECASE)
 olympics_df = df[(df.daypart_name == 'SP') &
                  df.invcode_name.str.match(olympic_pattern)]
 
-#null_df = df[df.program_start_time != df.program_start_time]
-#
-#u_inv = list((sp_df.invcode_name.unique()))
+null_df = df[df.program_start_time != df.program_start_time]
+
+u_inv = list((sp_df.invcode_name.unique()))
 '''Creating a dataframe with only sports data'''
 sports_df = sp_df[(~sp_df.invcode_name.str.match(olympic_pattern))]
 
@@ -57,4 +60,17 @@ years_dict = {}
 for invcode_name in inv:
     temp = df[(df.invcode_name == invcode_name)]
     years_dict[invcode_name] = temp.air_year.unique()
-    del temp
+
+del temp, invcode_name
+
+'''Determining the amount of historical data for time series'''
+Current_Year = datetime.datetime.now().year
+Good_TS = list(pd.Series(range((Current_Year-5), (1+Current_Year))))
+
+'''Looping through each value in the dictionary to check if its good for TS'''
+for key, value in years_dict.items():
+    if (set(Good_TS) & set(value)) == set(Good_TS):
+        print("Good", value)
+    else:
+        print("bad", value)
+

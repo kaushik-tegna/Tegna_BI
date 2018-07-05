@@ -5,6 +5,7 @@ Created on Tue Jun 26 15:21:23 2018
 @author: SRanganath
 """
 from Connections import WIDE_ORBIT_CONNECT, WIDE_ORBIT_QUERY
+import Flag_Functions
 import pandas as pd
 # import numpy as np
 import datetime
@@ -58,19 +59,7 @@ ts_data = pd.merge(ts_groups, data,  how='left',
 # Current_Year = datetime.datetime.now().year
 # TS_Years = list(pd.Series(range((Current_Year-4), (1+Current_Year))))
 
-# Function to check wether rows are fit for Time Series
-
-
-def TS_Check(x):
-    global ts_years
-    if set(x) & set(ts_years) == set(ts_years):
-        result = 'fit'
-    else:
-        result = 'unfit'
-    return result
-
-
-ts_data['time_series_flag'] = ts_data['air_year_x'].apply(TS_Check)
+ts_data['time_series_flag'] = ts_data['air_year_x'].apply(Flag_Functions.TS_Check)
 
 # view2 = data.head(1000)
 # view = Median_data.head(1000)
@@ -123,16 +112,8 @@ grouped_data['spot_lb'] = (grouped_data['spot_median'] -
                            (2*grouped_data['spot_mad']))
 
 
-def spot_check(row):
-    if (row['spot_sum'] >= row['spot_lb']
-            and row['spot_sum'] <= row['spot_ub']):
-        result = 'good'
-    else:
-        result = 'bad'
-    return result
-
-
-grouped_data['spot_flag'] = grouped_data.apply(spot_check, axis=1)
+grouped_data['spot_flag'] = grouped_data.apply(Flag_Functions.Spot_Check,
+                                               axis=1)
 
 data = pd.merge(grouped_data, data, how='left',
                 on=['market', 'station_name', 'daypart_name',
@@ -140,25 +121,9 @@ data = pd.merge(grouped_data, data, how='left',
 
 del grouped_mad, grouped_median, grouped_sum, grouped_median_mad, grouped_data
 
-# Flagging Olympics and sports
-
-olympic_pattern = re.compile('.*(olympic).*', re.IGNORECASE)
-
-
-def SP_Olympic_Check(row):
-    global olympic_pattern
-    if (row['daypart_name'] == 'SP'):
-        m = re.match(olympic_pattern, row['invcode_name'])
-        if m:
-            result = 'olympic'
-        else:
-            result = 'sports'
-    else:
-        result = 'normal'
-    return result
-
-
-data['sport_olympic_flag'] = data.apply(SP_Olympic_Check, axis=1)
+# Flagging Olympics and Sports
+data['sport_olympic_flag'] = data.apply(Flag_Functions.SP_Olympic_Check,
+                                        axis=1)
 
 final_table = data[['market', 'station_name', 'daypart_name', 'invcode_name',
                     'air_week', 'air_year', 'invcode_external_id',

@@ -4,7 +4,6 @@ Created on Tue Jun 26 15:21:23 2018
 
 @author: SRanganath
 """
-# import time
 from Connections import WIDE_ORBIT_CONNECT, WIDE_ORBIT_QUERY
 import pandas as pd
 # import numpy as np
@@ -12,14 +11,11 @@ import datetime
 import re
 # import time
 # import statsmodels
-from statsmodels.robust.scale import mad
 # start = time.time()
-# end = time.time()
-# print(end - start)
 
 # Connection String and Query to fetch  data
-Current_Year = datetime.datetime.now().year
-TS_Years = list(pd.Series(range((Current_Year-4), (1+Current_Year))))
+current_year = datetime.datetime.now().year
+ts_years = list(pd.Series(range((current_year-4), (1+current_year))))
 
 data = pd.read_sql(WIDE_ORBIT_QUERY, WIDE_ORBIT_CONNECT)
 data = data.sort_values(by=['air_year', 'air_week', 'program_start_time'])
@@ -40,34 +36,22 @@ data = data[['market', 'Station_Name', 'daypart_name', 'invcode_name',
              'spot_counts', 'spot_rating_key', 'affiliation', 'gross_revenue',
              'air_year', 'air_week', 'order_year', 'Order_week',
              'full_datetime', 'created_datetime', 'last_updated']]
-
-# Treating null values, removing SP dayparts with olympics
-
-SP_data = data[(data.daypart_name == 'SP')]
-
-# Olympics only data
-olympic_pattern = re.compile('.*(olympic).*', re.IGNORECASE)
-Olympics_data = data[(data.daypart_name == 'SP') &
-                     data.invcode_name.str.match(olympic_pattern)]
-
-# Creating a dataframe with only sports data
-
-Sports_data = SP_data[(~SP_data.invcode_name.str.match(olympic_pattern))]
+data = data.rename(str.lower, axis='columns')
 
 # Grouping for TS Data
 
-TS_groups = data.groupby(['market', 'Station_Name', 'daypart_name',
+ts_groups = data.groupby(['market', 'station_name', 'daypart_name',
                           'invcode_name', 'air_week'])['air_year'].unique()
-TS_groups = TS_groups.apply(list)
-TS_groups = TS_groups.to_frame().reset_index()
+ts_groups = ts_groups.apply(list)
+ts_groups = ts_groups.to_frame().reset_index()
 
 
 # test_df.air_year.dtype
 
 # Merging the data frame with the groupby object
 
-TS_data = pd.merge(TS_groups, data,  how='left',
-                   on=['market', 'Station_Name', 'daypart_name',
+ts_data = pd.merge(ts_groups, data,  how='left',
+                   on=['market', 'station_name', 'daypart_name',
                        'invcode_name', 'air_week'])
 
 # Determining the amount of historical data for time series
@@ -77,56 +61,118 @@ TS_data = pd.merge(TS_groups, data,  how='left',
 # Function to check wether rows are fit for Time Series
 
 
-def TS_check(x):
-    global TS_Years
-    if set(x) & set(TS_Years) == set(TS_Years):
-        result = 'Fit'
+def TS_Check(x):
+    global ts_years
+    if set(x) & set(ts_years) == set(ts_years):
+        result = 'fit'
     else:
-        result = 'Unfit'
+        result = 'unfit'
     return result
 
 
-TS_data['time_series_flag'] = TS_data['air_year_x'].apply(TS_check)
+ts_data['time_series_flag'] = ts_data['air_year_x'].apply(TS_Check)
 
 # view2 = data.head(1000)
 # view = Median_data.head(1000)
 # Restructuring the dataframe
 
-data = TS_data.drop(columns=['air_year_x'])
+data = ts_data.drop(columns=['air_year_x'])
 data = data.rename(index=str, columns={'air_year_y': 'air_year'})
 data = data.rename(str.lower, axis='columns')
 
-del TS_data, TS_groups, Current_Year, TS_Years
+del ts_data, ts_groups, current_year, ts_years
 
-# Calculating the grouped median
+# Regrouping data to calculate the cumulative values
 
-Median_group = data.groupby(['market', 'station_name',
-                             'daypart_name', 'invcode_name',
-                             'air_week', 'air_year'])['spot_counts'].median()
-Median_group = Median_group.reset_index()
-Median_data = pd.merge(Median_group, data, how='left',
-                       on=['market', 'station_name', 'daypart_name',
-                           'invcode_name', 'air_week', 'air_year'])
-Median_data = Median_data.rename(index=str,
-                                 columns={'spot_counts_y': 'spot_counts',
-                                          'spot_counts_x': 'spot_median'})
-del Median_group
+grouped_sum = data.groupby(['market', 'station_name',
+                            'daypart_name', 'invcode_name',
+                            'air_week', 'air_year'])['spot_counts'].sum()
+grouped_sum = grouped_sum.reset_index()
+grouped_sum = grouped_sum.rename(index=str,
+                                 columns={'spot_counts': 'spot_sum'})
 
 
-# Calculating the Median absolute deviation
+grouped_median = grouped_sum.groupby(['market', 'station_name',
+                                      'daypart_name', 'invcode_name',
+                                      'air_week'])['spot_sum'].median()
+grouped_median = grouped_median.reset_index()
+grouped_median = grouped_median.rename(index=str,
+                                       columns={'spot_sum': 'spot_median'})
 
-mad_group = Median_data.groupby(['market', 'station_name',
-                                 'daypart_name', 'invcode_name',
-                                 'air_week', 'air_year'])['spot_counts'].mad()
-mad_group = mad_group.reset_index()
+grouped_mad = grouped_sum.groupby(['market', 'station_name',
+                                   'daypart_name', 'invcode_name',
+                                   'air_week'])['spot_sum'].mad()
+grouped_mad = grouped_mad.reset_index()
+grouped_mad = grouped_mad.rename(index=str,
+                                 columns={'spot_sum': 'spot_mad'})
 
-Mad_data = pd.merge(mad_group, Median_data, how='left',
-                    on=['market', 'station_name', 'daypart_name',
-                        'invcode_name', 'air_week', 'air_year'])
-Mad_data = Mad_data.rename(index=str,
-                           columns={'spot_counts_y': 'spot_counts',
-                                    'spot_counts_x': 'spot_mad'})
+grouped_median_mad = pd.merge(grouped_median, grouped_mad, how='left',
+                              on=['market', 'station_name', 'daypart_name',
+                                  'invcode_name', 'air_week'])
+grouped_data = pd.merge(grouped_median_mad, grouped_sum, how='left',
+                        on=['market', 'station_name', 'daypart_name',
+                            'invcode_name', 'air_week'])
 
-view = Mad_data.head(1000)
+# Creating Upper and lower bound or spot_count
+# Upper Bound  = Median +2*(Median Absolute Deviation)
+# Lower_Bound = Median - 2*(Median Absolute Deviation)
 
-View1 = Mad_data[['spot_counts', 'spot_mad', 'spot_median']]
+grouped_data['spot_ub'] = (grouped_data['spot_median'] +
+                           (2*grouped_data['spot_mad']))
+grouped_data['spot_lb'] = (grouped_data['spot_median'] -
+                           (2*grouped_data['spot_mad']))
+
+
+def spot_check(row):
+    if (row['spot_sum'] >= row['spot_lb']
+            and row['spot_sum'] <= row['spot_ub']):
+        result = 'good'
+    else:
+        result = 'bad'
+    return result
+
+
+grouped_data['spot_flag'] = grouped_data.apply(spot_check, axis=1)
+
+data = pd.merge(grouped_data, data, how='left',
+                on=['market', 'station_name', 'daypart_name',
+                    'invcode_name', 'air_week', 'air_year'])
+
+del grouped_mad, grouped_median, grouped_sum, grouped_median_mad, grouped_data
+
+# Flagging Olympics and sports
+
+olympic_pattern = re.compile('.*(olympic).*', re.IGNORECASE)
+
+
+def SP_Olympic_Check(row):
+    global olympic_pattern
+    if (row['daypart_name'] == 'SP'):
+        m = re.match(olympic_pattern, row['invcode_name'])
+        if m:
+            result = 'olympic'
+        else:
+            result = 'sports'
+    else:
+        result = 'normal'
+    return result
+
+
+data['sport_olympic_flag'] = data.apply(SP_Olympic_Check, axis=1)
+
+final_table = data[['market', 'station_name', 'daypart_name', 'invcode_name',
+                    'air_week', 'air_year', 'invcode_external_id',
+                    'break_code', 'full_date', 'order_number', 'order_created',
+                    'program_start_time', 'start_time_cleaned',
+                    'program_end_time', 'end_time_cleaned', 'potential_units',
+                    'spot_counts', 'spot_rating_key', 'affiliation',
+                    'gross_revenue', 'order_year', 'order_week',
+                    'full_datetime', 'created_datetime', 'last_updated',
+                    'time_series_flag', 'spot_flag', 'sport_olympic_flag']]
+
+view = final_table[final_table['daypart_name'] == 'SP']
+
+# end = time.time()
+# total = end - start
+# 52.31779408454895
+# delete start, end
